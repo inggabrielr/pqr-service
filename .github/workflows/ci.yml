@@ -90,7 +90,7 @@ jobs:
       #    por un token temporal de SonarQube Cloud (válido 30 minutos,
       #    solo con permiso de análisis). No hay credenciales guardadas.
       - name: Autenticar en SonarQube Cloud (OIDC, sin secretos)
-        uses: SonarSource/sonarqube-auth-action@v1
+        uses: SonarSource/sonarqube-auth-action@b372e2c2930aadfcc4f4399446da1e12772709ad
 
       # 8. Analiza la calidad del código (errores, vulnerabilidades,
       #    duplicación, code smells) y envía la cobertura de JaCoCo.
