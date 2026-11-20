@@ -56,7 +56,12 @@ jobs:
         env:
           GITLEAKS_VERSION: 8.28.0   # versión sin la "v"; actualízala según la última publicada
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          ARCHIVO="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/${ARCHIVO}"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          tar -xzf "${ARCHIVO}" gitleaks
           ./gitleaks git . --redact --verbose
 
       # Va antes de compilar porque Maven necesita Java.
