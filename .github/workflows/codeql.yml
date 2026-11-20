@@ -1,0 +1,56 @@
+# ============================================================
+# Análisis de seguridad del código (SAST) con CodeQL – pqr-service
+# Busca vulnerabilidades en el código propio (inyecciones, rutas
+# manipulables, deserialización insegura, etc.).
+#
+# Va en un workflow separado del CI porque necesita un permiso
+# adicional (security-events: write) y así corre en paralelo
+# sin ampliar los permisos del pipeline principal.
+# ============================================================
+name: CodeQL
+
+on:
+  # Revisa cada cambio antes de integrarlo y después del merge.
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  # Además, una vez por semana: detecta vulnerabilidades nuevas
+  # que CodeQL aprenda a reconocer aunque el código no haya cambiado.
+  schedule:
+    - cron: '27 6 * * 1'   # lunes 06:27 UTC
+
+permissions:
+  # Solo lectura del código.
+  contents: read
+  # Permite publicar los hallazgos en la pestaña Security del repositorio.
+  security-events: write
+
+jobs:
+  analyze:
+    # Nombre del check que aparece en el PR.
+    name: Análisis de seguridad (CodeQL)
+    runs-on: ubuntu-latest
+
+    steps:
+      # Descarga el código que se va a analizar.
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      # Prepara CodeQL para Java.
+      # build-mode: none analiza el código fuente sin compilarlo,
+      # lo que hace el análisis más rápido y simple.
+      # security-extended amplía las reglas de seguridad por defecto.
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          build-mode: none
+          queries: security-extended
+
+      # Ejecuta el análisis y publica los resultados en la pestaña
+      # Security y como check en el PR.
+      - name: Ejecutar el análisis de CodeQL
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:java-kotlin
