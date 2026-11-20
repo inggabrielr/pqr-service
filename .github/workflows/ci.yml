@@ -37,7 +37,7 @@ jobs:
       #    fetch-depth: 0 trae el historial completo de Git, que SonarQube
       #    necesita para identificar el código nuevo y a sus autores.
       - name: Descargar el código
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -45,7 +45,7 @@ jobs:
       #    cache: maven guarda las dependencias descargadas para que
       #    las siguientes ejecuciones sean más rápidas.
       - name: Instalar Java 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
@@ -80,7 +80,7 @@ jobs:
       # 6. Reutiliza los componentes del analizador de SonarQube
       #    descargados en ejecuciones anteriores, para acelerar el análisis.
       - name: Caché de SonarQube
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
