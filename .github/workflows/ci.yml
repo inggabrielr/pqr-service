@@ -34,3 +34,10 @@ jobs:
         with:
           name: reportes-pruebas
           path: target/surefire-reports/
+
+      - name: Guardar reporte de cobertura
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reporte-cobertura
+          path: target/jacoco-report/
