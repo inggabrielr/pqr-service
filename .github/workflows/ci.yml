@@ -2,6 +2,11 @@
 # Pipeline de Integración Continua (CI) – pqr-service
 # Compila, prueba, mide cobertura y analiza la calidad del código
 # en cada pull request hacia main y después de cada merge.
+#
+# Orden de los pasos: primero lo más rápido y barato que puede
+# detener el pipeline (secretos), luego compilación y pruebas,
+# y al final el análisis de calidad, que necesita los resultados
+# de las pruebas. Así un error se detecta lo antes posible.
 # ============================================================
 name: CI
 
@@ -33,17 +38,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Descarga el código del repositorio en la máquina del pipeline.
-      #    fetch-depth: 0 trae el historial completo de Git, que SonarQube
-      #    necesita para identificar el código nuevo y a sus autores.
+      # Va primero porque todos los pasos siguientes necesitan el código.
+      # fetch-depth: 0 trae el historial completo de Git, que necesitan
+      # Gitleaks (para revisar todos los commits) y SonarQube (para
+      # identificar el código nuevo y a sus autores).
       - name: Descargar el código
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      # 2. Instala Java 25 (Temurin), la misma versión del entorno local.
-      #    cache: maven guarda las dependencias descargadas para que
-      #    las siguientes ejecuciones sean más rápidas.
+      # Va antes de compilar para fallar rápido: no tiene sentido compilar
+      # ni probar un cambio que expone credenciales.
+      # Busca contraseñas, tokens y llaves de API en el código y en todo
+      # el historial de Git. --redact oculta el valor del secreto en el log
+      # para no volver a exponerlo. Si encuentra algo, detiene el pipeline.
+      - name: Detectar secretos con Gitleaks
+        env:
+          GITLEAKS_VERSION: 8.28.0   # versión sin la "v"; actualízala según la última publicada
+        run: |
+          BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          ARCHIVO="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/${ARCHIVO}"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          tar -xzf "${ARCHIVO}" gitleaks
+          ./gitleaks git . --redact --verbose
+
+      # Va antes de compilar porque Maven necesita Java.
+      # Instala Java 25 (Temurin), la misma versión del entorno local.
+      # cache: maven guarda las dependencias descargadas para que
+      # las siguientes ejecuciones sean más rápidas.
       - name: Instalar Java 25
         uses: actions/setup-java@v6
         with:
@@ -51,16 +75,16 @@ jobs:
           java-version: '25'
           cache: maven
 
-      # 3. Compila el proyecto, ejecuta las pruebas unitarias y de la API,
-      #    y genera el reporte de cobertura con JaCoCo.
-      #    Usa el Maven Wrapper para garantizar la misma versión de Maven.
-      #    Si una prueba falla, el pipeline se detiene aquí.
+      # Núcleo del CI: compila, ejecuta las pruebas unitarias y de la API,
+      # y genera el reporte de cobertura con JaCoCo, que usará SonarQube.
+      # Usa el Maven Wrapper para garantizar la misma versión de Maven.
+      # Si una prueba falla, el pipeline se detiene aquí.
       - name: Compilar y ejecutar pruebas
         run: ./mvnw -B verify
 
-      # 4. Guarda los resultados de las pruebas como archivo descargable.
-      #    if: always() lo ejecuta aunque las pruebas fallen,
-      #    que es cuando más se necesita revisar el detalle.
+      # Va justo después de las pruebas para guardar sus resultados.
+      # if: always() lo ejecuta aunque las pruebas fallen,
+      # que es cuando más se necesita revisar el detalle.
       - name: Guardar reportes de pruebas
         if: always()
         uses: actions/upload-artifact@v7
@@ -68,8 +92,8 @@ jobs:
           name: reportes-pruebas
           path: target/surefire-reports/
 
-      # 5. Guarda el reporte de cobertura de JaCoCo (HTML y XML)
-      #    para consultarlo desde la pestaña Actions.
+      # Guarda el reporte de cobertura de JaCoCo (HTML y XML)
+      # para consultarlo desde la pestaña Actions.
       - name: Guardar reporte de cobertura
         if: always()
         uses: actions/upload-artifact@v7
@@ -77,8 +101,8 @@ jobs:
           name: reporte-cobertura
           path: target/jacoco-report/
 
-      # 6. Reutiliza los componentes del analizador de SonarQube
-      #    descargados en ejecuciones anteriores, para acelerar el análisis.
+      # Prepara el análisis de calidad: reutiliza los componentes del
+      # analizador de SonarQube descargados en ejecuciones anteriores.
       - name: Caché de SonarQube
         uses: actions/cache@v6
         with:
@@ -86,18 +110,20 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      # 7. Autenticación sin secretos: cambia el token OIDC de GitHub
-      #    por un token temporal de SonarQube Cloud (válido 30 minutos,
-      #    solo con permiso de análisis). No hay credenciales guardadas.
+      # Va inmediatamente antes del análisis porque el token dura 30 minutos.
+      # Autenticación sin secretos: cambia el token OIDC de GitHub por un
+      # token temporal de SonarQube Cloud, solo con permiso de análisis.
+      # Fijada por SHA (acción de terceros) para evitar ataques a la
+      # cadena de suministro.
       - name: Autenticar en SonarQube Cloud (OIDC, sin secretos)
         uses: SonarSource/sonarqube-auth-action@b372e2c2930aadfcc4f4399446da1e12772709ad
 
-      # 8. Analiza la calidad del código (errores, vulnerabilidades,
-      #    duplicación, code smells) y envía la cobertura de JaCoCo.
-      #    No repite las pruebas: usa lo generado en el paso 3.
-      #    sonar.qualitygate.wait=true espera el resultado del quality gate
-      #    y hace fallar el pipeline si el código nuevo no lo cumple.
-      #    GITHUB_TOKEN (automático) permite asociar el análisis al PR.
+      # Va al final porque necesita el código compilado y el reporte de
+      # cobertura de los pasos anteriores; no repite las pruebas.
+      # Analiza errores, vulnerabilidades, duplicación y code smells.
+      # sonar.qualitygate.wait=true espera el resultado del quality gate
+      # y hace fallar el pipeline si el código nuevo no lo cumple.
+      # GITHUB_TOKEN (automático) permite asociar el análisis al PR.
       - name: Análisis de calidad con SonarQube Cloud
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
