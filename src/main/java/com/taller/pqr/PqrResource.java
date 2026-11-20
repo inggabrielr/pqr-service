@@ -1,6 +1,5 @@
 package com.taller.pqr;
 
-import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -22,8 +21,12 @@ public class PqrResource {
     /** Solo letras, números y guiones, de 1 a 20 caracteres. */
     private static final Pattern ID_VALIDO = Pattern.compile("^[A-Za-z0-9-]{1,20}$");
 
-    @Inject
-    PqrService service;
+    private final PqrService service;
+
+    /** Quarkus inyecta el servicio a través del constructor. */
+    public PqrResource(PqrService service) {
+        this.service = service;
+    }
 
     @GET
     @Path("/{id}")
