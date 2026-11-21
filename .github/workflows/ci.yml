@@ -43,7 +43,7 @@ jobs:
       # Gitleaks (para revisar todos los commits) y SonarQube (para
       # identificar el código nuevo y a sus autores).
       - name: Descargar el código
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
