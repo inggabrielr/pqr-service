@@ -54,7 +54,7 @@ jobs:
       # para no volver a exponerlo. Si encuentra algo, detiene el pipeline.
       - name: Detectar secretos con Gitleaks
         env:
-          GITLEAKS_VERSION: 8.28.0   # versión sin la "v"; actualízala según la última publicada
+          GITLEAKS_VERSION: 8.30.1   # versión sin la "v"; actualízala según la última publicada
         run: |
           BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
           ARCHIVO="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
