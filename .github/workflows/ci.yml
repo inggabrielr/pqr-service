@@ -54,7 +54,7 @@ jobs:
       # para no volver a exponerlo. Si encuentra algo, detiene el pipeline.
       - name: Detectar secretos con Gitleaks
         env:
-          GITLEAKS_VERSION: 8.28.0   # versión sin la "v"; actualízala según la última publicada
+          GITLEAKS_VERSION: 8.30.1   # versión sin la "v"; actualízala según la última publicada
         run: |
           BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
           ARCHIVO="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
@@ -91,6 +91,25 @@ jobs:
         with:
           name: reportes-pruebas
           path: target/surefire-reports/
+
+      # Va después de compilar porque necesita las dependencias que Maven
+      # ya descargó en ~/.m2: así Trivy no consulta Maven Central, que
+      # limita las peticiones desde las IP compartidas de GitHub (error 429).
+      # Revisa las dependencias del pom.xml (incluidas las transitivas)
+      # contra bases de vulnerabilidades conocidas (CVE) y detiene el
+      # pipeline si hay alguna ALTA o CRÍTICA que ya tenga versión corregida.
+      # Descarga solo por HTTPS y validada con checksum.
+      - name: Revisar dependencias con Trivy
+        env:
+          TRIVY_VERSION: 0.76.2   # versión sin la "v"; actualízala según la última publicada
+        run: |
+          BASE_URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          ARCHIVO="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/${ARCHIVO}"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/trivy_${TRIVY_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "trivy_${TRIVY_VERSION}_checksums.txt"
+          tar -xzf "${ARCHIVO}" trivy
+          ./trivy fs . --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --offline-scan --exit-code 1
 
       # Guarda el reporte de cobertura de JaCoCo (HTML y XML)
       # para consultarlo desde la pestaña Actions.

@@ -1,0 +1,27 @@
+# ============================================================
+# Dependabot – actualizaciones automáticas de dependencias
+# Revisa cada semana si hay versiones nuevas y abre un PR por
+# cada actualización; el CI valida cada PR antes del merge.
+# ============================================================
+version: 2
+updates:
+  # Dependencias de Maven declaradas en el pom.xml.
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+    # Máximo de PR abiertos a la vez, para no saturar al equipo.
+    open-pull-requests-limit: 5
+    # Agrupa las actualizaciones de Quarkus en un solo PR,
+    # porque sus componentes deben moverse juntos.
+    groups:
+      quarkus:
+        patterns:
+          - "io.quarkus*"
+
+  # Versiones de las acciones usadas en los workflows de GitHub Actions
+  # (evita las advertencias de versiones obsoletas, como la de Node.js 20).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
