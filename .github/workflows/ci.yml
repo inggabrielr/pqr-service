@@ -101,7 +101,7 @@ jobs:
       # Descarga solo por HTTPS y validada con checksum.
       - name: Revisar dependencias con Trivy
         env:
-          TRIVY_VERSION: 0.67.0   # versión sin la "v"; actualízala según la última publicada
+          TRIVY_VERSION: 0.76.2   # versión sin la "v"; actualízala según la última publicada
         run: |
           BASE_URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
           ARCHIVO="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
