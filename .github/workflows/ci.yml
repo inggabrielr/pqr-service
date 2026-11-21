@@ -64,6 +64,24 @@ jobs:
           tar -xzf "${ARCHIVO}" gitleaks
           ./gitleaks git . --redact --verbose
 
+      # Va después de Gitleaks y antes de compilar para fallar rápido:
+      # no tiene sentido compilar un cambio con librerías vulnerables.
+      # Revisa las dependencias declaradas en el pom.xml contra bases de
+      # vulnerabilidades conocidas (CVE) y detiene el pipeline si hay
+      # alguna ALTA o CRÍTICA que ya tenga versión corregida.
+      # Igual que Gitleaks: descarga solo por HTTPS y validada con checksum.
+      - name: Revisar dependencias con Trivy
+        env:
+          TRIVY_VERSION: 0.76.2   # versión sin la "v"; actualízala según la última publicada
+        run: |
+          BASE_URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          ARCHIVO="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/${ARCHIVO}"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE_URL}/trivy_${TRIVY_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "trivy_${TRIVY_VERSION}_checksums.txt"
+          tar -xzf "${ARCHIVO}" trivy
+          ./trivy fs . --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+
       # Va antes de compilar porque Maven necesita Java.
       # Instala Java 25 (Temurin), la misma versión del entorno local.
       # cache: maven guarda las dependencias descargadas para que
