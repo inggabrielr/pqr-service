@@ -147,3 +147,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.qualitygate.wait=true
+
+      # Va al final porque solo tiene sentido empaquetar un cambio que ya
+      # pasó las pruebas, los controles de seguridad y el quality gate.
+      # Construye la imagen de contenedor con Jib, sin Dockerfile, y la
+      # etiqueta con el SHA del commit para rastrearla hasta su código.
+      # No repite las pruebas (-DskipTests): ya se ejecutaron antes.
+      # La imagen queda en el Docker local del runner; todavía no se publica.
+      - name: Construir imagen de contenedor con Jib
+        run: >
+          ./mvnw -B package -DskipTests
+          -Dquarkus.container-image.build=true
+          -Dquarkus.container-image.tag=${{ github.sha }}
+
+      # Muestra la imagen generada como evidencia en el log.
+      - name: Verificar imagen construida
+        run: docker images taller/pqr-service
