@@ -1,0 +1,26 @@
+# ============================================================
+# Excepciones de vulnerabilidades aceptadas temporalmente
+# ============================================================
+# Imagen base: registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24-5
+#
+# Motivo: Red Hat ya publicó las versiones corregidas de curl y expat
+# para UBI 9, pero aún no existe una imagen base de Java reconstruida
+# con ellas. La 1.24-5 es la versión disponible con menos hallazgos
+# (9 altas, 0 críticas; la 1.24-3.x tiene 46, incluida una crítica en OpenJDK).
+#
+# Riesgo: bajo. La aplicación no invoca curl/libcurl, y Java procesa XML
+# con su propio analizador, no con expat.
+#
+# Vencimiento: si la imagen base no se actualiza antes de la fecha,
+# Trivy vuelve a reportarlas y el pipeline falla.
+#
+# Revisado por: Juan Gabriel Rodríguez – 2026-11-21
+
+# curl / libcurl
+CVE-2026-8286 exp:2026-12-31
+CVE-2026-8458 exp:2026-12-31
+CVE-2026-8927 exp:2026-12-31
+CVE-2026-9547 exp:2026-12-31
+
+# expat
+CVE-2026-115506 exp:2026-12-31

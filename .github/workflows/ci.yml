@@ -163,3 +163,20 @@ jobs:
       # Muestra la imagen generada como evidencia en el log.
       - name: Verificar imagen construida
         run: docker images taller/pqr-service
+
+      # Va justo después de construir la imagen y antes de cualquier
+      # publicación: una imagen vulnerable no debe salir del pipeline.
+      # Revisa todas las capas del contenedor: sistema operativo base,
+      # entorno de Java y librerías de la aplicación. Reutiliza el binario
+      # de Trivy ya descargado y verificado en el paso de dependencias.
+      # --offline-scan evita consultar Maven Central (límite de peticiones).
+      # Detiene el pipeline si hay vulnerabilidades ALTAS o CRÍTICAS
+      # que ya tengan versión corregida.
+      - name: Escanear imagen con Trivy
+        run: >
+          ./trivy image taller/pqr-service:${{ github.sha }}
+          --scanners vuln
+          --severity HIGH,CRITICAL
+          --ignore-unfixed
+          --offline-scan
+          --exit-code 1
