@@ -202,7 +202,7 @@ jobs:
       # Igual que Gitleaks y Trivy: descarga solo por HTTPS y validada con checksum.
       - name: Prueba de rendimiento con k6
         env:
-          K6_VERSION: 2.4.0   # versión sin la "v"; actualízala según la última publicada
+          K6_VERSION: 1.4.2   # versión sin la "v"; actualízala según la última publicada
           BASE_URL: http://localhost:8080
         run: |
           BASE="https://github.com/grafana/k6/releases/download/v${K6_VERSION}"
