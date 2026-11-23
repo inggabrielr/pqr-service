@@ -207,11 +207,13 @@ jobs:
         run: |
           BASE="https://github.com/grafana/k6/releases/download/v${K6_VERSION}"
           ARCHIVO="k6-v${K6_VERSION}-linux-amd64.tar.gz"
+          cd "$RUNNER_TEMP"
           curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE}/${ARCHIVO}"
           curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE}/k6-v${K6_VERSION}-checksums.txt"
           sha256sum --check --ignore-missing "k6-v${K6_VERSION}-checksums.txt"
           tar -xzf "${ARCHIVO}" --strip-components=1 "k6-v${K6_VERSION}-linux-amd64/k6"
-          ./k6 run --summary-export k6-resumen.json k6/smoke.js
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/k6" run --summary-export k6-resumen.json k6/smoke.js
 
       # Guarda el resumen de la prueba (tiempos, percentiles, errores)
       # como evidencia, aunque la prueba haya fallado.
