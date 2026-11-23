@@ -180,3 +180,51 @@ jobs:
           --ignore-unfixed
           --offline-scan
           --exit-code 1
+
+      # Va después del escaneo: solo se prueba el rendimiento de una imagen
+      # que ya pasó todos los controles de calidad y seguridad.
+      # Levanta la imagen construida en este pipeline (la misma que se
+      # desplegaría) y espera a que el health check indique que está lista.
+      - name: Levantar la imagen para la prueba de rendimiento
+        run: |
+          docker run -d --name pqr-service -p 8080:8080 taller/pqr-service:${{ github.sha }}
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/q/health/ready > /dev/null; then
+              echo "Servicio listo"; exit 0
+            fi
+            sleep 2
+          done
+          echo "El servicio no estuvo listo a tiempo"; docker logs pqr-service; exit 1
+
+      # Ejecuta la prueba de rendimiento ligera con k6 contra el contenedor.
+      # Si no se cumplen los umbrales del script (errores, tiempos o checks),
+      # k6 termina con error y el pipeline falla.
+      # Igual que Gitleaks y Trivy: descarga solo por HTTPS y validada con checksum.
+      - name: Prueba de rendimiento con k6
+        env:
+          K6_VERSION: 1.4.2   # versión sin la "v"; actualízala según la última publicada
+          BASE_URL: http://localhost:8080
+        run: |
+          BASE="https://github.com/grafana/k6/releases/download/v${K6_VERSION}"
+          ARCHIVO="k6-v${K6_VERSION}-linux-amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE}/${ARCHIVO}"
+          curl --proto '=https' --tlsv1.2 -sSfL -O "${BASE}/k6-v${K6_VERSION}-checksums.txt"
+          sha256sum --check --ignore-missing "k6-v${K6_VERSION}-checksums.txt"
+          tar -xzf "${ARCHIVO}" --strip-components=1 "k6-v${K6_VERSION}-linux-amd64/k6"
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/k6" run --summary-export k6-resumen.json k6/smoke.js
+
+      # Guarda el resumen de la prueba (tiempos, percentiles, errores)
+      # como evidencia, aunque la prueba haya fallado.
+      - name: Guardar resultados de rendimiento
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resultados-rendimiento
+          path: k6-resumen.json
+
+      # Detiene y elimina el contenedor de prueba, pase lo que pase.
+      - name: Detener el contenedor de prueba
+        if: always()
+        run: docker rm -f pqr-service || true
