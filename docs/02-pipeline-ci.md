@@ -32,6 +32,26 @@ flowchart LR
 Criterio de orden: primero los controles rápidos que pueden detener el pipeline, luego compilación y pruebas,
 y al final los pasos que necesitan resultados anteriores (análisis, imagen, rendimiento).
 
+## Stages del pipeline
+
+El pipeline como código está en `.github/workflows/ci.yml` (equivalente en GitHub Actions a un Jenkinsfile).
+Sus steps se agrupan en estas etapas lógicas:
+
+| # | Stage | Steps en `ci.yml` | Justificación del orden |
+|---|---|---|---|
+| 1 | Checkout | Descargar el código (`fetch-depth: 0`) | Todo lo demás necesita el código; el historial completo lo usan Gitleaks y SonarQube |
+| 2 | Detección de secretos | Gitleaks | Control rápido: no se compila un cambio que expone credenciales |
+| 3 | Compilación y pruebas | Instalar Java · `./mvnw -B verify` · reportes de pruebas y cobertura | Núcleo del CI; genera la cobertura que usa SonarQube |
+| 4 | Análisis de dependencias | Trivy (`fs`) | Necesita las dependencias ya resueltas por Maven (`~/.m2`) |
+| 5 | Calidad de código | Caché · autenticación OIDC · SonarQube + *quality gate* | Necesita clases compiladas y `jacoco.xml` |
+| 6 | Construcción de la imagen | Jib (etiqueta = SHA del commit) | Solo se empaqueta lo que pasó pruebas, seguridad y calidad |
+| 7 | Escaneo de la imagen | Trivy (`image`) | Revisa sistema base y Java antes de cualquier publicación |
+| 8 | Prueba de rendimiento | Levantar contenedor · k6 · resultados · detener contenedor | Se prueba el artefacto real que se desplegaría |
+| — | SAST (workflow paralelo) | CodeQL en `codeql.yml` | Requiere `security-events: write`; separado para no ampliar permisos del CI |
+
+Criterio general: primero los controles rápidos que pueden detener el pipeline; después, los que dependen de
+resultados anteriores. Cualquier stage en rojo bloquea el merge a `main` (Paso 10).
+
 ## Archivos del pipeline
 
 | Archivo | Función |
@@ -128,6 +148,10 @@ permissions:
 
 **Verificar:** artefacto **reportes-pruebas** en la ejecución.
 
+**Evidencia:**
+
+![Ejecución del CI en verde en un PR](evidencias/paso-01-ci-verde.png)
+
 ## Paso 2. Cobertura con JaCoCo
 
 **Objetivo:** medir la cobertura de **todas** las pruebas (unitarias y `@QuarkusTest`).
@@ -181,6 +205,10 @@ quarkus.jacoco.report=false           # un solo reporte: el del plugin
 
 **Verificar:** `open target/jacoco-report/index.html`; artefacto **reporte-cobertura** en el CI.
 
+**Evidencia:**
+
+![Reporte de cobertura de JaCoCo](evidencias/paso-02-cobertura.png)
+
 ## Paso 3. Calidad con SonarQube Cloud
 
 **Objetivo:** analizar calidad y bloquear el PR si el código nuevo no cumple el *quality gate* (Sonar way).
@@ -221,6 +249,10 @@ Configuración en SonarQube Cloud:
 
 **Verificar:** en el log, `QUALITY GATE STATUS: PASSED`; comentario de SonarQube Cloud en el PR.
 
+**Evidencia:**
+
+![Quality gate de SonarQube Cloud en el PR](evidencias/paso-03-sonar-quality-gate.png)
+
 ## Paso 4. Detección de secretos
 
 **Objetivo:** impedir que credenciales lleguen al repositorio.
@@ -252,7 +284,11 @@ GitHub: **Settings → Advanced Security** → activar **Secret scanning** y **P
 - Descarga solo por HTTPS (también en redirecciones) y validada con *checksum* antes de ejecutar.
 - `--redact` oculta el valor del secreto en el log.
 
-**Prueba controlada:** rama con una propiedad `pqr.integracion.api-key=<32 caracteres hexadecimales aleatorios>` en `application.properties` → el CI falla en Gitleaks → cerrar el PR sin merge. El valor no se incluye aquí porque Gitleaks también lo detectaría en la documentación (ver 03 – Paso 4).
+**Prueba controlada:** rama con una propiedad `pqr.integracion.api-key=<32 caracteres hexadecimales aleatorios>` en `application.properties` → el CI falla en Gitleaks → cerrar el PR sin merge. El valor no se incluye aquí porque Gitleaks también lo detectaría en la documentación (ver [03 – Paso 4](03-problemas-y-soluciones.md#paso-4-detección-de-secretos)).
+
+**Evidencia:**
+
+![CI detenido por Gitleaks en la prueba controlada](evidencias/paso-04-gitleaks-secreto.png)
 
 ## Paso 5. Seguridad del código con CodeQL
 
@@ -288,6 +324,10 @@ jobs:
 Workflow separado: necesita `security-events: write` y así no amplía los permisos del CI principal.
 
 **Verificar:** check **Análisis de seguridad (CodeQL)** en el PR; pestaña **Security → Code scanning**.
+
+**Evidencia:**
+
+![Check de CodeQL y pestaña Code scanning](evidencias/paso-05-codeql.png)
 
 ## Paso 6. Dependencias de terceros
 
@@ -337,6 +377,12 @@ Va después de compilar: usa las dependencias ya descargadas en `~/.m2` (`--offl
 
 **Prueba controlada:** rama con `org.apache.commons:commons-text:1.9` (CVE-2022-42889) → el CI falla en Trivy → cerrar el PR sin merge.
 
+**Evidencia:**
+
+![CI detenido por Trivy con commons-text 1.9](evidencias/paso-06-trivy-dependencia.png)
+
+![PR automáticos de Dependabot](evidencias/paso-06-dependabot-prs.png)
+
 ## Paso 7. Imagen de contenedor con Jib
 
 **Objetivo:** empaquetar la aplicación como imagen, sin Dockerfile.
@@ -369,6 +415,10 @@ quarkus.jib.base-jvm-image=registry.access.redhat.com/ubi9/openjdk-25-runtime:1.
 - Etiqueta = SHA del commit: cada imagen es rastreable hasta su código.
 - Se construye, no se publica (la publicación en Artifact Registry corresponde al CD).
 
+**Evidencia:**
+
+![Imagen construida con Jib en el CI](evidencias/paso-07-imagen-construida.png)
+
 ## Paso 8. Escaneo de la imagen con Trivy
 
 **Objetivo:** revisar todas las capas de la imagen: sistema operativo base, Java y librerías.
@@ -389,6 +439,10 @@ documentados en `.trivyignore` con fecha de vencimiento (ver [03 – Paso 8](03-
 skopeo list-tags docker://registry.access.redhat.com/ubi9/openjdk-25-runtime | grep '"1\.' | tail -15
 trivy image registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24-5 --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed
 ```
+
+**Evidencia:**
+
+![Hallazgos de la imagen base y comparación de etiquetas](evidencias/paso-08-trivy-imagen.png)
 
 ## Paso 9. Rendimiento con k6
 
@@ -440,6 +494,10 @@ Umbrales de `k6/smoke.js`:
 
 **Verificar:** resumen de k6 con todos los umbrales en ✓; artefacto **resultados-rendimiento**.
 
+**Evidencia:**
+
+![Resumen de k6 con umbrales cumplidos](evidencias/paso-09-k6-resumen.png)
+
 ## Paso 10. Protección de la rama `main`
 
 **Objetivo:** que ningún cambio llegue a `main` sin pasar por el pipeline.
@@ -487,19 +545,18 @@ git commit --allow-empty -m "Prueba: push directo a main" && git push
 git reset --hard origin/main      # descartar el commit local de prueba
 ```
 
+**Evidencia:**
+
+![PR con merge bloqueado por el CI en rojo](evidencias/paso-10-merge-bloqueado.png)
+
+![Push directo a main rechazado](evidencias/paso-10-push-rechazado.png)
+
 ---
 
-## Evidencias sugeridas (`docs/evidencias/`)
+## Evidencias
 
-| Archivo | Contenido |
-|---|---|
-| `paso-03-sonar-quality-gate.png` | *Quality gate* en el PR |
-| `paso-04-gitleaks-secreto.png` | CI fallido por el secreto falso |
-| `paso-06-trivy-dependencia.png` | CI fallido por `commons-text 1.9` |
-| `paso-08-trivy-imagen.png` | Hallazgos de la imagen base y comparación de etiquetas |
-| `paso-09-k6-resumen.png` | Resumen de k6 con umbrales |
-| `paso-10-merge-bloqueado.png` | PR con merge bloqueado |
-| `paso-10-push-rechazado.png` | Push directo a `main` rechazado |
+Las capturas están en [`docs/evidencias/`](evidencias/) y se muestran en el paso correspondiente.
+Nombre: `paso-<número>-<tema>.png`.
 
 ## Versiones de referencia (noviembre de 2026)
 
